@@ -348,27 +348,35 @@ async function fetchAllCommentsForIssue({
     id: number
   }> = []
 
-  const fetchComments = async (minId?: number): Promise<void> => {
-    // APIリクエスト数をインクリメント
-    await rateLimiter.increment()
-
-    let url = `${baseUrl}/issues/${issueKey}/comments?apiKey=${apiKey}&count=100`
-    if (minId) {
-      url += `&minId=${minId}`
-    }
-
-    const comments = await ky.get(url).json<typeof allComments>()
-    allComments.push(...comments)
-
-    if (comments.length === 100) {
-      // 取得したコメントの最後のIDを次のリクエストのminIdとして使用
-      const lastCommentId = comments.at(-1)!.id
-      await fetchComments(lastCommentId + 1)
-    }
-  }
+  // コメント取得時に使用する最小IDを初期化
+  let minId: number | undefined
 
   try {
-    await fetchComments()
+    // コメントを取得できる限り繰り返す
+    while (true) {
+      // APIリクエスト数をインクリメント
+      // eslint-disable-next-line no-await-in-loop
+      await rateLimiter.increment()
+
+      let url = `${baseUrl}/issues/${issueKey}/comments?apiKey=${apiKey}&count=100&order=asc`
+      if (minId !== undefined) {
+        url += `&minId=${minId}`
+      }
+
+      // eslint-disable-next-line no-await-in-loop
+      const comments = await ky.get(url).json<typeof allComments>()
+      allComments.push(...comments)
+
+      // 100件未満であれば最後のページなのでループを終了
+      if (comments.length < 100) {
+        break
+      }
+
+      // 次回のリクエストに使用するminIdを更新
+      const lastCommentId = comments.at(-1)!.id
+      minId = lastCommentId + 1
+    }
+
     // コメントを古い順（昇順）に並び替える
     allComments.sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime())
     return {comments: allComments}
