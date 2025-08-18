@@ -150,24 +150,22 @@ export async function downloadIssues(
     // 進捗状況を一行で更新
     process.stdout.write(`\r課題を取得中... (${allIssues.length}件取得済み)`)
 
-    return ky.get(`${baseUrl}/issues?${params.toString()}`).json<
-      Array<{
-        assignee: null | {id: number; name: string}
-        created: string
-        customFields: Array<{
-          id: number
-          name: string
-          value: unknown
-        }>
-        description: string
+    return ky.get(`${baseUrl}/issues?${params.toString()}`).json<Array<{
+      assignee: null | {id: number; name: string}
+      created: string
+      customFields: Array<{
         id: number
-        issueKey: string
-        priority: {id: number; name: string}
-        status: {id: number; name: string}
-        summary: string
-        updated: string
+        name: string
+        value: unknown
       }>
-    >()
+      description: string
+      id: number
+      issueKey: string
+      priority: {id: number; name: string}
+      status: {id: number; name: string}
+      summary: string
+      updated: string
+    }>>()
   }
 
   // 再帰的に全ての課題を取得
@@ -239,9 +237,7 @@ export async function downloadIssues(
         let commentIndex = 1
         for (const comment of allComments) {
           const commentDate = new Date(comment.created).toLocaleString('ja-JP')
-          commentsSection += `\n### コメント ${commentIndex}\n- **投稿者**: ${
-            comment.createdUser.name
-          }\n- **日時**: ${commentDate}\n\n${comment.content || '(内容なし)'}\n\n---\n`
+          commentsSection += `\n### コメント ${commentIndex}\n- **投稿者**: ${comment.createdUser.name}\n- **日時**: ${commentDate}\n\n${comment.content || '(内容なし)'}\n\n---\n`
           commentIndex++
         }
 
@@ -348,22 +344,22 @@ async function fetchAllCommentsForIssue({
     id: number
   }> = []
 
-  const fetchComments = async (minId?: number): Promise<void> => {
+  const fetchComments = async (maxId?: number): Promise<void> => {
     // APIリクエスト数をインクリメント
     await rateLimiter.increment()
 
     let url = `${baseUrl}/issues/${issueKey}/comments?apiKey=${apiKey}&count=100`
-    if (minId) {
-      url += `&minId=${minId}`
+    if (maxId) {
+      url += `&maxId=${maxId}`
     }
 
     const comments = await ky.get(url).json<typeof allComments>()
     allComments.push(...comments)
 
     if (comments.length === 100) {
-      // 取得したコメントの最後のIDを次のリクエストのminIdとして使用
+      // 取得したコメントの最後のIDを次のリクエストのmaxIdとして使用
       const lastCommentId = comments.at(-1)!.id
-      await fetchComments(lastCommentId + 1)
+      await fetchComments(lastCommentId)
     }
   }
 
